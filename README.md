@@ -1,1 +1,1 @@
-# CSC 480 - Project01
+# CSC 480 - Project 01
