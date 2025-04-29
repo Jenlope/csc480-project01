@@ -1,131 +1,101 @@
 import sys
 import heapq
 
-DIRECTIONS = {'N': (-1, 0), 'S': (1, 0), 'E': (0, 1), 'W': (0, -1)}
+# Directions: N, S, E, W
+DIRS = {'N': (-1, 0), 'S': (1, 0), 'E': (0, 1), 'W': (0, -1)}
 
-def parse_file(filepath):
-    with open(filepath, 'r') as f:
-        cols = int(f.readline())
-        rows = int(f.readline())
+def parse_file(path):
+    with open(path) as f:
+        cols, rows = int(f.readline()), int(f.readline())
         grid = [list(f.readline().strip()) for _ in range(rows)]
 
-    start_loc = None
-    dirty_cells = set()
-
+    start = None
+    dirty = set()
     for r in range(rows):
         for c in range(cols):
             if grid[r][c] == '@':
-                start_loc = (r, c)
+                start = (r, c)
             elif grid[r][c] == '*':
-                dirty_cells.add((r, c))
+                dirty.add((r, c))
 
-    return grid, start_loc, dirty_cells
+    return grid, start, dirty
 
-def dfs(grid, start_loc, dirty_cells):
-    rows, cols = len(grid), len(grid[0])
-    stack = [{
-        "loc": start_loc,
-        "dirt": set(dirty_cells),
-        "path": []
-    }]
+def dfs(grid, start, dirty):
+    stack = [(start, set(dirty), [])]
     visited = set()
-    nodes_generated = 1
-    nodes_expanded = 0
+    gen, exp = 1, 0
 
     while stack:
-        state = stack.pop()
-        loc, dirt_left, path = state["loc"], state["dirt"], state["path"]
-        nodes_expanded += 1
-
+        loc, dirt_left, path = stack.pop()
+        exp += 1
         if not dirt_left:
-            return path, nodes_generated, nodes_expanded
+            return path, gen, exp
 
         if loc in dirt_left:
-            new_dirt = set(dirt_left)
-            new_dirt.remove(loc)
-            stack.append({
-                "loc": loc,
-                "dirt": new_dirt,
-                "path": path + ["V"]
-            })
-            nodes_generated += 1
+            new_dirt = dirt_left - {loc}
+            stack.append((loc, new_dirt, path + ['V']))
+            gen += 1
             continue
 
-        r, c = loc
-        for action, (dr, dc) in DIRECTIONS.items():
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < rows and 0 <= nc < cols and grid[nr][nc] != '#':
-                state_id = ((nr, nc), frozenset(dirt_left))
-                if state_id not in visited:
-                    visited.add(state_id)
-                    stack.append({
-                        "loc": (nr, nc),
-                        "dirt": dirt_left,
-                        "path": path + [action]
-                    })
-                    nodes_generated += 1
+        for move, (dr, dc) in DIRS.items():
+            nr, nc = loc[0] + dr, loc[1] + dc
+            if 0 <= nr < len(grid) and 0 <= nc < len(grid[0]) and grid[nr][nc] != '#':
+                state = ((nr, nc), frozenset(dirt_left))
+                if state not in visited:
+                    visited.add(state)
+                    stack.append(((nr, nc), dirt_left, path + [move]))
+                    gen += 1
 
-    return [], nodes_generated, nodes_expanded
+    return [], gen, exp
 
-def ucs(grid, start_loc, dirty_cells):
-    rows, cols = len(grid), len(grid[0])
-    initial_state = (0, [], start_loc, frozenset(dirty_cells))
-    priority_queue = [initial_state]
+def ucs(grid, start, dirty):
+    pq = [(0, [], start, frozenset(dirty))]
     visited = set()
-    nodes_generated = 1
-    nodes_expanded = 0
+    gen, exp = 1, 0
 
-    while priority_queue:
-        cost, path, loc, dirt_left = heapq.heappop(priority_queue)
-        state_id = (loc, dirt_left)
-
-        if state_id in visited:
+    while pq:
+        cost, path, loc, dirt_left = heapq.heappop(pq)
+        if (loc, dirt_left) in visited:
             continue
-        visited.add(state_id)
-        nodes_expanded += 1
+        visited.add((loc, dirt_left))
+        exp += 1
 
         if not dirt_left:
-            return path, nodes_generated, nodes_expanded
+            return path, gen, exp
 
         if loc in dirt_left:
-            new_dirt = set(dirt_left)
-            new_dirt.remove(loc)
-            heapq.heappush(priority_queue, (cost + 1, path + ["V"], loc, frozenset(new_dirt)))
-            nodes_generated += 1
+            new_dirt = dirt_left - {loc}
+            heapq.heappush(pq, (cost + 1, path + ['V'], loc, frozenset(new_dirt)))
+            gen += 1
             continue
 
-        r, c = loc
-        for action, (dr, dc) in DIRECTIONS.items():
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < rows and 0 <= nc < cols and grid[nr][nc] != '#':
-                heapq.heappush(priority_queue, (cost + 1, path + [action], (nr, nc), dirt_left))
-                nodes_generated += 1
+        for move, (dr, dc) in DIRS.items():
+            nr, nc = loc[0] + dr, loc[1] + dc
+            if 0 <= nr < len(grid) and 0 <= nc < len(grid[0]) and grid[nr][nc] != '#':
+                heapq.heappush(pq, (cost + 1, path + [move], (nr, nc), dirt_left))
+                gen += 1
 
-    return [], nodes_generated, nodes_expanded
+    return [], gen, exp
 
 def main():
     if len(sys.argv) != 3:
         print("Usage: python3 planner.py [uniform-cost|depth-first] [world-file]")
         return
 
-    algorithm = sys.argv[1]
-    file_path = sys.argv[2]
+    algo, file = sys.argv[1], sys.argv[2]
+    grid, start, dirty = parse_file(file)
 
-    cols, rows, grid, start, dirty = parse_file(file_path)
-    initial_state = (start, frozenset(dirty))
-
-    if algorithm == "depth-first":
-        actions, nodes_generated, nodes_expanded = dfs(initial_state, grid, cols, rows)
-    elif algorithm == "uniform-cost":
-        actions, nodes_generated, nodes_expanded = ucs(initial_state, grid, cols, rows)
+    if algo == "depth-first":
+        actions, gen, exp = dfs(grid, start, dirty)
+    elif algo == "uniform-cost":
+        actions, gen, exp = ucs(grid, start, dirty)
     else:
-        print("Unknown algorithm. Use 'depth-first' or 'uniform-cost'.")
+        print("Unknown algorithm.")
         return
 
-    for action in actions:
-        print(action)
-    print(f"{nodes_generated} nodes generated")
-    print(f"{nodes_expanded} nodes expanded")
+    print("\n".join(actions))
+    print(f"{gen} nodes generated")
+    print(f"{exp} nodes expanded")
 
 if __name__ == "__main__":
     main()
